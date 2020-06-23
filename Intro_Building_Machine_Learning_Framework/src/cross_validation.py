@@ -4,7 +4,7 @@ from sklearn import model_selection
 """
 - binary_classification
 - multi-class classification
-- multi-label classification
+- multilabel classification
 - single column regression
 - multi column regression
 - holdout
@@ -16,9 +16,10 @@ class CrossValidation:
             self,
             df,
             target_cols,
+            shuffle,
+            multilabel_delimiter=",",
             problem_type="binary_classification",
             num_folds=5,
-            shuffle=True,
             random_state=42
     ):
         self.dataframe = df
@@ -28,6 +29,7 @@ class CrossValidation:
         self.num_folds = num_folds
         self.shuffle = shuffle
         self.random_state = random_state
+        self.multilabel_delimiter=multilabel_delimiter
 
         if self.shuffle is True:
             self.dataframe = self.dataframe.sample(frac=1).reset_index(drop=True)
@@ -54,25 +56,49 @@ class CrossValidation:
                 raise Exception("Invalid number of Target columns for this problem type")
             if self.num_targets < 2 and self.problem_type == "multi_col_regression":
                 raise Exception("Invalid number of Target columns for this problem type")
-            target = self.target_cols[0]
             kf = model_selection.KFold(n_splits=self.num_folds)
             for fold, (train_idx, val_idx) in enumerate(kf.split(X=self.dataframe)):
                 self.dataframe.loc[val_idx, 'kfold'] = fold
 
+        elif self.problem_type.startswith("holdout_"):  # holdout_10, holdout_5
+            holdout_percentage = int(self.problem_type.split("_")[1])
+            num_holdout_samples = int((len(self.dataframe) * holdout_percentage) / 100)
+            self.dataframe.loc[:num_holdout_samples, "kfold"] = 0
+            self.dataframe.loc[num_holdout_samples:, "kfold"] = 1
 
+        elif self.problem_type == "multilabel_classification":
+            if self.num_targets != 1:
+                raise Exception("Invalid number of Target columns for this problem type")
+            targets = self.dataframe[self.target_cols[0]].apply(lambda x: len(str(x).split(self.multilabel_delimiter)))
+            kf = model_selection.StratifiedKFold(n_splits=self.num_folds)
+            for fold, (train_idx, val_idx) in enumerate(
+                    kf.split(X=self.dataframe, y=targets)):
+                self.dataframe.loc[val_idx, 'kfold'] = fold
         else:
             raise Exception("Problem type not found")
         return self.dataframe
 
 
 if __name__ == "__main__":
-    problem_type = "single_col_regression"
-    target_cols = ["SalePrice"]
-    df = pd.read_csv("./input/train_house_prices_advanced_regression.csv")
-    cv = CrossValidation(df, target_cols=target_cols, problem_type=problem_type)
+    target_cols = ["attribute_ids"]
+    problem_type = "multilabel_classification"
+    df = pd.read_csv("./input/train_multilabel_imetcollection.csv")
+    shuffle = False
+    multilabel_delimiter = " "
+    cv = CrossValidation(df, target_cols=target_cols, problem_type=problem_type, shuffle=shuffle,
+                         multilabel_delimiter=multilabel_delimiter)
     df_split = cv.split()
     target = target_cols[0]
     print(df_split.head())
-    print(df_split[df_split.kfold == 0][target].value_counts())
-    print(df_split[df_split.kfold == 1][target].value_counts())
+    print("kfold = 0 \n", df_split[df_split.kfold == 0][target].value_counts())
+    print("kfold = 1 \n", df_split[df_split.kfold == 1][target].value_counts())
     print(df_split.kfold.value_counts())
+    # print(problem_type.split("_")[0])
+
+
+""" multilabel_classification
+id  target
+1.  32,65       # 2-class
+2.  7,5,89      # 2-class    
+3.  67,6,8      # 3-class
+"""
