@@ -16,16 +16,18 @@ class CatergoricalFeatures:
         handle_na: True/False
         """
         self.df = df
-        self.output_df = self.df.copy(deep=True)
+
         self.categorical_features = categorical_features
         self.enc_type = encoding_type
         self.handle_na = handle_na
         self.label_encoders = dict()
         self.binary_encoders = dict()
+        self.ohe = None
 
         if handle_na:
             for c in self.categorical_features:
                 self.df.loc[:, c] = self.df.loc[:, c].astype(str).fillna("-9999999")
+            self.output_df = self.df.copy(deep=True)
 
     def _label_encoding(self):
         for c in self.categorical_features:
@@ -47,11 +49,19 @@ class CatergoricalFeatures:
             self.binary_encoders[c] = lbl
         return self.output_df
 
+    def _one_hot(self):
+        ohe = preprocessing.OneHotEncoder()
+        ohe.fit(self.df[self.categorical_features].values)
+        return ohe.transform(self.df[self.categorical_features].values)
+
+
     def fit_transform(self):
         if self.enc_type == "label":
             return self._label_encoding()
         elif self.enc_type == "binary":
             return self._label_binarization()
+        elif self.enc_type == "ohe":
+            return self._one_hot()
         else:
             raise Exception("Encoding type not understood")
 
@@ -75,9 +85,11 @@ class CatergoricalFeatures:
 
 if __name__ == "__main__":
     import pandas as pd
+    from sklearn import linear_model
 
-    df_train = pd.read_csv("../input/train_classification_2_categorical_feature_encoding.csv")    #.head(500)
-    df_test = pd.read_csv("../input/test_classification_2_categorical_feature_encoding.csv")      #.head(500)
+    df_train = pd.read_csv("./input/train_classification_2_categorical_feature_encoding.csv")    #.head(500)
+    df_test = pd.read_csv("./input/test_classification_2_categorical_feature_encoding.csv")      #.head(500)
+    sample = pd.read_csv("./input/sample_submission_2_categorical_feature_encoding.csv")
 
     train_idx =df_train["id"].values
     test_idx = df_test["id"].values
@@ -90,12 +102,29 @@ if __name__ == "__main__":
 
     cat_feats = CatergoricalFeatures(full_data,
                                      categorical_features=cols,
-                                     encoding_type="label",
+                                     encoding_type="ohe",
                                      handle_na=True)
     full_data_transformed = cat_feats.fit_transform()
 
-    train_df = full_data_transformed[full_data_transformed["id"].isin(train_idx)].reset_index(drop=True)
-    test_df = full_data_transformed[full_data_transformed["id"].isin(test_idx)].reset_index(drop=True)
+    # train_df = full_data_transformed[full_data_transformed["id"].isin(train_idx)].reset_index(drop=True)
+    # test_df = full_data_transformed[full_data_transformed["id"].isin(test_idx)].reset_index(drop=True)
 
-    print(train_df.shape)
-    print(test_df.shape)
+    # print(train_df.shape)
+    # print(test_df.shape)
+
+    # for ONE-HOT ENCODER
+    train_len = len(df_train)
+    X = full_data_transformed[:train_len, :]
+    X_test = full_data_transformed[train_len:, :]
+
+    print(X.shape)
+    print(X_test.shape)
+
+    #train
+    clf = linear_model.LogisticRegression()
+    clf.fit(X, df_train.target.values)
+    preds = clf.predict_proba(X_test)[:, 1]
+
+    sample.loc[:, "target"] = preds
+
+    sample.to_csv("submission.csv", index=False)
