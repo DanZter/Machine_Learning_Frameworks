@@ -14,3 +14,10 @@ STEPS:
 - holdout
 
 # Categorical Data Approaches {categorical.py}
+### PREPROCESSING
+- label encoding
+- one-hot encoding
+- binarization
+
+### IN MODEL
+
